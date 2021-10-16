@@ -1,125 +1,110 @@
-// Api
-const API = "https://api.lyrics.ovh";
-
-//   DOOM
-const search = document.getElementById("search");
-const submit = document.getElementById("submit");
-const contentSearch = document.getElementById("contentSearch");
-const message = document.getElementById("message");
-
-const form = document.querySelector(".form");
-
-// listen for form submit
-
-form.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const searchTerm = search.value.trim();
-  if (!searchTerm) return;
-  searchSongs(searchTerm);
-});
-
-//Search songs
-
-function searchSongs(search) {
-  //fetch
-  fetch(`${API}/suggest/${search}`)
-    .then((response) => response.json())
-    .then((data) => {
-      return showSongs(data);
-    });
-}
-
-// Show songs
-function showSongs(songs) {
-  clearHtml();
-
-  contentSearch.innerHTML = `
-      <ul class="songs">
-  ${songs.data
-    .map((song) => {
-      return `<li class="song">
-      <span>
-        ${song.title} by ${song.artist.name}
-      </span>
-      <button
-        class="detail"
-        data-title="${song.title}"
-        data-artist="${song.artist.name}"
-      >
-        Detail
-      </button>
-    </li>`;
-    })
-    .join("")}
-      </ul >
-      ${songs.prev ? `  <button>Prev</button>  ` : ""}
-      ${songs.next ? `<button>Next</button>   ` : ""}
-      
-   `;
-}
-
-contentSearch.addEventListener("click", (e) => {
-  if (e.target.tagName === "BUTTON") {
-    const elemtnet = e.target;
-    const title = elemtnet.getAttribute("data-title");
-    const artistName = elemtnet.getAttribute("data-artist");
-    getLyric(artistName, title);
-  }
-});
-
-// Get song lyrics
-
-//  function getLyric(artist, title) {
-//   fetch(`${API}/v1/${artist}/${title}`)
-//     .then((response) => response.json())
-//     .then((data) => showLyrics(title, artist, data.lyrics));
-// }
-async function getLyric(artist, title) {
-  const resq = await fetch(`${API}/v1/${artist}/${title}`);
-  const response = await resq.json();
-  const lyrics = await response;
-  showLyrics(title, artist, lyrics.lyrics);
-}
-
-// Show Lyrics
-function showLyrics(title, artist, lyric) {
-  if (lyric === undefined) {
-    showMessage(title, artist);
-    return;
-  }
-  lyric = lyric.replace(/(\n|\r)/g, "<br>");
-  const elemente = `
-        <div class="lyric">
-        <button id="copy" class="detail"> Copy Lyric</button>
-        <h1>${title} by ${artist}</h1>
-       <p>
-       ${lyric}
-       </p>
-        </div>
-        `;
-  //contentlyrics.append(elemente);
-  contentlyrics.innerHTML = elemente;
-}
-// clear
-function clearHtml() {
+const fetchData = ({ url, callBack }) => {
+  const BASE_URL = `https://api.lyrics.ovh`;
+  return fetch(`${BASE_URL}/${url}`)
+    .then((res) => res.json())
+    .then((data) => callBack({ data }));
+};
+const stringToHTML = (s) => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(s, "text/html");
+  return doc.body.firstChild;
+};
+const clearContent = () => {
+  const contentSearch = document.getElementById("contentSearch");
+  const search = document.getElementById("search");
+  const contentlyrics = document.getElementById("contentlyrics");
   contentSearch.innerHTML = "";
-  search.value = "";
   contentlyrics.innerHTML = "";
-}
-
-// Copy lyric
-contentlyrics.addEventListener("click", (e) => {
-  let copyLyric = contentlyrics.innerText;
-  if (e.target.tagName === "BUTTON") {
-    navigator.clipboard.writeText(copyLyric);
-  }
-});
-
-function showMessage(title, artist) {
-  message.innerHTML = `${title} by ${artist} - Lyric not found   `;
-  message.style.opacity = "1";
-
+  search.value = "";
+};
+const showError = ({ message }) => {
+  const messageSelector = document.getElementById("message");
+  messageSelector.innerHTML = message;
+  messageSelector.style.opacity = 1;
   setTimeout(() => {
-    message.style.opacity = "0";
+    messageSelector.style.opacity = 0;
   }, 2000);
-}
+};
+const templateSongs = ({ data }) => {
+  let { data: songs } = data;
+  let template = `<ul class="songs">
+    ${songs
+      .map((song) => {
+        let {
+          title,
+          artist: { name },
+        } = song;
+        return `<li class="song">
+          <span>${title} by ${name}</span>
+          <button
+            class="detail"
+            data-title="${title}"
+            data-artist="${name}"
+          >Detail</button>
+      </li>`;
+      })
+      .join("")}
+  </ul>`;
+  return template;
+};
+const templateLyric = ({ data }) => {
+  let { lyrics } = data;
+  if (lyrics === undefined) {
+    return showError({ message: "Lyric not found" });
+  }
+  lyrics = lyrics.replace(/(\n|\r)/g, "<br>");
+  const template = `
+        <div class="lyric">
+          <button id="copy" class="detail"> Copy Lyric</button>
+            <p>
+            ${lyrics}
+            </p>
+        </div>`;
+  return template;
+};
+const copySong = ({ selector, content }) => {
+  if (selector.id === "copy") {
+    navigator.clipboard.writeText(content);
+  }
+};
+const showLyric = ({ data }) => {
+  const lyricsWrapper = document.getElementById("contentlyrics");
+  let contentHTML = stringToHTML(templateLyric({ data }));
+  lyricsWrapper.innerHTML = "";
+  lyricsWrapper.append(contentHTML);
+  lyricsWrapper.addEventListener("click", (evt) =>
+    copySong({ selector: evt.target, content: lyricsWrapper.innerText })
+  );
+};
+const fetchLyric = ({ title, artist }) => {
+  let url = `/v1/${artist}/${title}`;
+  return fetchData({ url, callBack: showLyric });
+};
+const handleSong = (evt) => {
+  if (evt.target.classList.contains("detail")) {
+    let { title, artist } = evt.target.dataset;
+    fetchLyric({ title, artist });
+  }
+};
+const showSongs = ({ data }) => {
+  const contentSearch = document.getElementById("contentSearch");
+  let contentHTML = stringToHTML(templateSongs({ data }));
+  clearContent();
+  contentSearch.append(contentHTML);
+  contentSearch.addEventListener("click", handleSong);
+};
+const searchSong = ({ search }) => {
+  let url = `/suggest/${search}`;
+  return fetchData({ url, callBack: showSongs });
+};
+const handleSubmit = (evt) => {
+  evt.preventDefault();
+  const formData = new FormData(evt.target);
+  const search = formData.get("search");
+  if (!search) return;
+  searchSong({ search });
+};
+window.addEventListener("DOMContentLoaded", function () {
+  const form = document.querySelector(".form");
+  form.addEventListener("submit", handleSubmit);
+});
